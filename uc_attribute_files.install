@@ -9,19 +9,23 @@
 /**
  * Implemenation of hook_schema()
  *//*
-function uc_attribute_schema() {
-  return $schema;
+function uc_attribute_files_schema() {
+	return $schema;
 }
 
 /**
  * Implmentation of hook_install().
- *//*
-function uc_attribute_install() {
+ */
+function uc_attribute_files_install() {
+	variable_set('uc_attribute_files_cart_filepath', file_directory_path() . '/cart');
+	variable_set('uc_attribute_files_order_filepath', file_directory_path() . '/orders');
 }
 
 /**
  * Implementation of hook_uninstall().
- *//*
-function uc_attribute_uninstall() {
+ */
+function uc_attribute_files_uninstall() {
+	variable_del('uc_attribute_files_cart_filepath');
+	variable_del('uc_attribute_files_order_filepath');
 }
 //*/
