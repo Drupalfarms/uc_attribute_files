@@ -1,0 +1,27 @@
+<?php
+// $Id: 
+
+/**
+ * @file
+ * Install hooks for uc_test.module.
+ */
+
+/**
+ * Implemenation of hook_schema()
+ *//*
+function uc_attribute_schema() {
+  return $schema;
+}
+
+/**
+ * Implmentation of hook_install().
+ *//*
+function uc_attribute_install() {
+}
+
+/**
+ * Implementation of hook_uninstall().
+ *//*
+function uc_attribute_uninstall() {
+}
+//*/
