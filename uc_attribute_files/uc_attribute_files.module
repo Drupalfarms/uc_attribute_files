@@ -112,7 +112,7 @@ function uc_attribute_files_perm() {
 		    case 'order':
 		       $dir = variable_get('uc_attribute_files_order_filepath', null) . "/" . $uid . "/" . $order_id;
 		       
-		       if($type !== 'anonymous' && $uid == $user->$uid && $uid == 0){ //Force anonymous orders to provide zip
+		       if($type !== 'anonymous' && $uid == $user->uid && $uid == 0){ //Force anonymous orders to provide zip
         	    return drupal_get_form('uc_attribute_files_anonymous_zip_form', $file, $uid, $order_id);
 		       }
 		       break;
@@ -124,7 +124,7 @@ function uc_attribute_files_perm() {
 
 	    if( !is_null(variable_get('uc_attribute_files_cart_filepath', null)) &&  //Validate variable set
 	        !is_null(variable_get('uc_attribute_files_order_filepath', null)) && //Validate variable set
-	        ($uid == $user->$uid || user_access('view all uploads'))  &&         //Check permission
+	        ($uid == $user->uid || user_access('view all uploads'))  &&         //Check permission
 	        !is_null($dir) && is_readable($dir . '/' . check_plain($file))       //Check dir & file are valid
 	    ){ 
 	    	uc_attribute_files_download_transfer(check_plain($file), $dir);
@@ -301,7 +301,7 @@ function uc_attribute_files_perm() {
 			          
 			              $form['submit']['#attributes']['disabled'] = 'disabled';
 			              $form['submit']['#title'] = 'You must login to add this to your cart';
-			              if($user->userid == 0){
+			              if($user->uid == 0){
                       $form['uc_attribute_files_login_required']['#value'] = '<DIV>' . t('Please !login to see if you can add this item to your cart.', array('!login' => l(t('login'), 'user/login'))) . '</DIV>';
                     } else {
                       $form['uc_attribute_files_login_required']['#value'] = '<DIV>' .t('Your userid can not add this item. Please contact an administrator for assistance.') . '</DIV>';
