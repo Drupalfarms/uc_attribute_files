@@ -386,6 +386,8 @@ function uc_attribute_files_perm() {
 			     }
 			     break;
       case 'uc_object_attributes_form':
+			     if(count($form['attributes']) < 1){ break;}
+
           foreach($form['attributes'] as $id=>$attribute){
             $form['attributes'][$id]['display']['#options'][variable_get('uc_attribute_files_attribute_number', 4)]	= t('File Upload');
           }
