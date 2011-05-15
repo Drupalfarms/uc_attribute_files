@@ -1,4 +1,4 @@
-; $Id: 
+; $Id$ 
 name = UC_attribute_files
 description = Extends product attributes in Ubercart to allow a customer to attach a file upload to a product in their cart. Module supports filtering of file types allowed to upload either globally, or by adding the file type extension to the list of options.
 dependencies[] = uc_product
