@@ -79,26 +79,26 @@ function _uc_attribute_files_download($type, $file, $uid = NULL, $order_id = NUL
 
   switch ($type) {
     case 'cart':
-       $dir = variable_get('uc_attribute_files_cart_filepath', NULL) . "/" . uc_cart_get_id();
-       break;
+      $dir = variable_get('uc_attribute_files_cart_filepath', NULL) . "/" . uc_cart_get_id();
+      break;
        
     case 'anonymous':
     case 'order':
-       $dir = variable_get('uc_attribute_files_order_filepath', NULL) . "/" . $uid . "/" . $order_id;
-       
-       if ($type !== 'anonymous' && $uid == $user->uid && $uid == 0) { //Force anonymous orders to provide zip
-          return drupal_get_form('uc_attribute_files_anonymous_zip_form', $file, $uid, $order_id);
-       }
-       break;
+      $dir = variable_get('uc_attribute_files_order_filepath', NULL) . "/" . $uid . "/" . $order_id;
+      
+      if ($type !== 'anonymous' && $uid == $user->uid && $uid == 0) { //Force anonymous orders to provide zip
+         return drupal_get_form('uc_attribute_files_anonymous_zip_form', $file, $uid, $order_id);
+      }
+      break;
 
     default:
-       $dir = NULL;
-       break;
+      $dir = NULL;
+      break;
   }
 
   if (!is_null(variable_get('uc_attribute_files_cart_filepath', NULL)) &&  //Validate variable set
       !is_null(variable_get('uc_attribute_files_order_filepath', NULL)) && //Validate variable set
-      ($uid == $user->uid || user_access('view all uploads'))  &&         //Check permission
+      ($uid == $user->uid || user_access('view all attribute uploads'))  &&         //Check permission
       !is_null($dir) && is_readable($dir . '/' . check_plain($file))       //Check dir & file are valid
   ) {
     uc_attribute_files_download_transfer(check_plain($file), $dir);
@@ -140,26 +140,29 @@ function _uc_attribute_files_download($type, $file, $uid = NULL, $order_id = NUL
   }
 }
 
-
+/**
+ * Provides form prompting anonymous users to enter their postcode
+*/
 function uc_attribute_files_anonymous_zip_form($form_state, $file, $uid, $order_id) {
-  $form['zip'] = array( '#type'      => 'textfield',
-                        '#description' => t('Enter the billing zip code for the order'),
-                        '#title'     => t('Billing Zip Code'),
-                        '#size'      => 5,
-                        '#maxlength' => 5,
-                      );
-  $form['a'] = array( '#type' => 'hidden', '#value' => $file );
-  $form['b'] = array( '#type' => 'hidden', '#value' => $uid );
-  $form['c'] = array( '#type' => 'hidden', '#value' => $order_id );
+  $form['zip'] = array(
+    '#type'      => 'textfield',
+    '#description' => t('Enter the billing zip code for the order'),
+    '#title'     => t('Billing Zip Code'),
+    '#size'      => 5,
+    '#maxlength' => 5,
+  );
+  $form['file'] = array('#type' => 'value', '#value' => $file);
+  $form['uid'] = array('#type' => 'value', '#value' => $uid);
+  $form['order_id'] = array('#type' => 'value', '#value' => $order_id);
   $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
   return $form;
 }
 
 function uc_attribute_files_anonymous_zip_form_submit($form, &$form_state) {
   $zip = $form_state['values']['zip'];
-  $file = $form_state['values']['a'];
-  $uid = $form_state['values']['b'];
-  $order_id = $form_state['values']['c'];
+  $file = $form_state['values']['file'];
+  $uid = $form_state['values']['uid'];
+  $order_id = $form_state['values']['order_id'];
 
   if (intval($order_id) > 0) {
     $order = uc_order_load($order_id);
@@ -170,6 +173,9 @@ function uc_attribute_files_anonymous_zip_form_submit($form, &$form_state) {
   drupal_set_message(t('Zip code does not match order.'));   
 }
 
+/**
+ * Transfer the file
+*/
 function uc_attribute_files_download_transfer($file, $path) {
   //Function copied and modified slightly from uc_file.module
 

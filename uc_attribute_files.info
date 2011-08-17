@@ -2,6 +2,7 @@ name = Ubercart Attributes - Files
 description = Extends product attributes in Ubercart to allow a customer to attach a file upload to a product in their cart. Module supports filtering of file types allowed to upload either globally, or by adding the file type extension to the list of options.
 dependencies[] = uc_product
 dependencies[] = uc_cart
+dependencies[] = upload
 dependencies[] = uc_attribute
 dependencies[] = uc_order
 package = "Ubercart - Contrib (optional)"
