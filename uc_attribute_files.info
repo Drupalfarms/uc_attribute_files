@@ -3,6 +3,7 @@ description = Extends product attributes in Ubercart to allow a customer to atta
 dependencies[] = uc_product
 dependencies[] = uc_cart
 dependencies[] = upload
+dependencies[] = user_files
 dependencies[] = uc_attribute
 dependencies[] = uc_order
 package = "Ubercart - Contrib (optional)"

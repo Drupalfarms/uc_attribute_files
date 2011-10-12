@@ -6,15 +6,9 @@
  * @license GPL v2 http://www.fsf.org/licensing/licenses/gpl.html
  * @author Doug Logan <my first name at dlogan dot com>
  * @author Lee Rowlands contact at rowlandsgroup dot com
- * @todo Organize code into logical sections and write a header for what each function does.
- * @todo Separate Admin functions for an admin include.
  * @todo Fix http://localhost/drupal/?q=node/6/edit/options so notes on use with file upload is output
  * @todo Adjust the price of items in the cart based on the extension of the option chosen
- * @todo Clear cache on permissions and get it working for both view attribute uploads, and view all upload.
- * @todo Track down why getting "Invalid type of order was passed by user" within Watchdog
- * @todo add to cart data
  */
-
 /*******************************************************
  * Constants
  *******************************************************/
@@ -30,27 +24,6 @@ define('UC_ATTRIBUTE_FILES_TYPE', 213); //completely random but less likely to c
 */
 function uc_attribute_files_perm() {
   return array('view all attribute uploads', 'upload attribute files', 'view attribute uploads');
-}
-
-/**
- * Implements hook_menu
-*/
-function uc_attribute_files_menu() {
-  $items = array();
-  $items['uploads/cart/%'] = array(
-    'page callback' => '_uc_attribute_files_download',
-    'page arguments' => array(1, 2),
-    'file' => 'uc_attribute_files.inc',
-    'access callback' => 'uc_attribute_files_user_view_upload_access',
-    'type' => MENU_CALLBACK,
-  );
-  $items['uploads/order/%/%/%'] = array(
-    'page callback' => '_uc_attribute_files_download',
-    'page arguments' => array(1, 4, 2, 3),
-    'access callback' => 'uc_attribute_files_user_view_upload_access',
-    'type' => MENU_CALLBACK,
-  );
-  return $items;
 }
 
 /**
@@ -98,30 +71,25 @@ function uc_attribute_files_form_alter(&$form, $form_state, $form_id) {
             else {
               $form['#attributes'] = array('enctype' => "multipart/form-data");
             }
-            $form['#submit'][] = 'uc_attribute_files_upload_file';
-            $form['#validate'][] = 'uc_attribute_files_cart_validate';
-
-            $form['attributes'][$id]['#type'] = 'file';
+            // Make sure our submit function goes before uc_attributes (but only once!)
+            if (!in_array('uc_attribute_files_cart_submit', $form['#submit'])) {
+              array_unshift($form['#submit'], 'uc_attribute_files_cart_submit');
+            }
+            // Unfortunately file elements don't support being part of #TREE so
+            // we have to provide unique field names
+            $field_name = 'attributes_'. $id;
+            // clone the existing field
+            $form['attributes'][$field_name] = $form['attributes'][$id];
+            // make it a file
+            $form['attributes'][$field_name]['#type'] = 'file';
+            // unset the parents nesting
+            $form['attributes'][$field_name]['#parents'] = array($field_name);
+            // remove the old field - move it to a value
+            $form['attributes'][$id]['#type'] = 'value';
           }
         }
       }
     }
-  }
-}
-
-/**
- * Implements hook_cron
-*/
-function uc_attribute_files_cron() {
-  $dir = realpath(variable_get('uc_attribute_files_cart_filepath', NULL) .'/');
-  $cart_dirs = array_flip(scandir($dir));
-  $result = db_query("SELECT DISTINCT cart_id FROM {uc_cart_products}");
-  while ($row = db_fetch_object($result)) {
-    unset($cart_dirs[$row->cart_id]);
-  }
-  unset($cart_dirs['.'], $cart_dirs['..']);
-  foreach ($cart_dirs as $id => $jnk) {
-    _uc_attribute_files_rrmdir($dir . $id);
   }
 }
 
@@ -169,16 +137,6 @@ function uc_attribute_files_form_uc_attribute_form_alter(&$form, $form_state) {
 /**
  * Implements hook_form_FORM_ID_alter
 */
-function uc_attribute_files_form_user_login_block_form_alter(&$form, $form_state) {
-  //Add Hidden form element to pass old cart id on logon
-  #@todo this really belongs in hook_user
-  $form['uc_attribute_files_cartid'] = array('#type' => 'value', '#value' => uc_cart_get_id() ); 
-  break;
-}
-
-/**
- * Implements hook_form_FORM_ID_alter
-*/
 function uc_attribute_files_form_uc_attribute_options_form_form_alter(&$form, $form_state) {
   if (count($form['#parameters']) < 1) {
     break;
@@ -221,17 +179,15 @@ function uc_attribute_files_form_uc_object_attributes_form_alter(&$form, $form_s
 }
 
 /**
- * Implements hook_user
-*/
-function uc_attribute_files_user($op, &$edit, &$user, $category = NULL) {
-  switch ($op) {
-  case 'login':
-    $dir = realpath(variable_get('uc_attribute_files_cart_filepath', NULL));
-    uc_attribute_files_move_files($dir . "/" . $edit['uc_attribute_files_cartid'], $dir . '/' . uc_cart_get_id());
-    break;
-  }
+ * Implementation of hook_theme().
+ */
+function uc_attribute_files_theme($existing, $type, $theme, $path) {
+  return array(
+    'uc_product_attributes_files' => array(
+      'arguments' => array('element' => NULL),
+    ),
+  );
 }
-
 
 /*******************************************************
  * Access callbacks
@@ -252,27 +208,58 @@ function uc_attribute_files_user_view_upload_access() {
  * Implements hook_product_description_alter
  * Allows us to render our links as desired
 */
-function uc_attribute_files_product_description_alter($item) {
-  $item['#post_render'][] = "uc_attribute_files_render_links";
+function uc_attribute_files_product_description_alter(&$item, $product) {
+  if (isset($item['attributes'])) {
+    foreach (element_children($item['attributes']) as $key) {
+      $node = node_load($item['attributes']['#product']['#value']->nid);
+      $attribute = $node->attributes[$key];
+      if (empty($attribute)) {
+        // we've been passed the item with the attributes keyed by arbritrary aid
+        // and have to load the attribute based on name (yuck this is a bug with
+        // how uc sets the cart data for attributes)
+        $attribute = db_fetch_object(db_query("SELECT * FROM {uc_attributes}
+                                              WHERE label = '%s'", $item['attributes'][$key]['#attribute_name']));
+      }
+      if ($attribute->display == UC_ATTRIBUTE_FILES_TYPE) {
+        // We've got a file here - load it
+        $file = db_fetch_object(db_query('SELECT f.* FROM {files} f WHERE f.fid = %d', $item['attributes'][$key]['#options'][0]));
+        if ($file) {
+          $url = _user_files_generate_url($file->filepath);
+          // 
+          $item['attributes'][$key]['#options'][0] = l($file->filename, $url);
+          $item['attributes'][$key]['#html'] = TRUE;
+          // Override the theming so we can pass through the url without a check_plain
+          $item['attributes']['#theme'] = 'uc_product_attributes_files';
+        }
+      }
+    }
+  }
   return $item;
 }
 
-/**
- * Implements hook_order
-*/
-function uc_attribute_files_order($op, &$arg1, $arg2) {
-  global $user;
-  switch ($op) {
-  case 'submit':
-    $cart_dir =  variable_get('uc_attribute_files_cart_filepath', NULL) . '/' . uc_cart_get_id();
-    $order_dir = variable_get('uc_attribute_files_order_filepath', NULL) . '/' . $user->uid . '/' . $arg1->order_id;
-    uc_attribute_files_move_files($cart_dir, $order_dir);
-    break;
-  }
-}
 /*******************************************************
  * Module functions
  *******************************************************/
+/**
+ * Util to fetch allowed extensions for an attribute and add them to those
+ * provided by upload module
+ * @param $attribute object the attribute object
+ * @param $validators array of validators keyed by validator function
+ * @return array of validators
+*/
+function uc_attribute_files_fetch_extensions($attribute, $validators) {
+  $result = db_query("SELECT name FROM {uc_attribute_options} WHERE aid = %d", $attribute->aid);
+
+  $file_types = array();
+  while ($option = db_fetch_object($result)) {
+    $file_types[] = strtolower($option->name);
+  }
+  
+  if (count($file_types)) {
+    $validators['file_validate_extensions'] .= ' '. implode(' ', $file_types);
+  }
+  return $validators;
+}
 /**
  * Validation function for admin form
 */
@@ -290,55 +277,6 @@ function uc_attribute_files_admin_validate($form, &$form_state) {
 }
 
 /**
- * Validation handler for add to cart form
-*/
-function uc_attribute_files_cart_validate($form, &$form_state) {
-  dsm($form_state);
-  dsm($_FILES);
-  $cart_id = uc_cart_get_id();
-
-  $uploads_path = variable_get('uc_attribute_files_cart_filepath', NULL);
-  if (is_null($uploads_path)) {
-    form_set_error('file', t('Upload to directory failed. Please contact an administrator.'));
-    return FALSE;
-  }
-  $upload_dir =  $uploads_path .'/'. $cart_id;
-
-  //Check if folder exists, or create it.
-  if (!is_dir($upload_dir) && !@mkdir($upload_dir, 0755, TRUE)) { 
-    form_set_error('file', t('Upload to directory failed. Please contact an administrator.'));
-    return FALSE;
-  }
-
-  //Validate file type & file was uploaded properly
-  foreach ($_FILES['files']['name'] as $id => $value) {
-    foreach ($form['node']['#value']->attributes as $attribute) {
-      if ($attribute->name == $id) {
-        //Test to see if there are any options, since they can represent ok file types
-        $result = db_query("SELECT name FROM {uc_attribute_options} WHERE aid = %d", $attribute->aid);
-        unset($file_types);
-
-        while ($option = db_fetch_object($result)) {
-          $file_types[] = strtolower($option->name);
-        }
-        if (count($file_types) < 1) { //If there are no options, load the default acceptable file types
-          $file_types = array_map('strtolower', explode(';', variable_get('uc_attribute_files_file_extensions', NULL)));
-        }
-        $filename = file_munge_filename($value, "");
-        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-        if (!in_array($ext, $file_types) && !in_array('*', $file_types)) {
-          form_set_error($id, t('Sorry, but %label only accepts the following file types: !types', array('%label' => $attribute->label, '!types' => implode(";", $file_types))));
-        }
-        elseif (intval($_FILES['files']['error'][$id]) !== 0 || intval($_FILES['files']['size'][$id]) < 1 || !@copy($_FILES['files']['tmp_name'][$id], $upload_dir . '/' . $filename)) {
-          form_set_error($id, t('!filename: File upload failed for %label.', array('!filename' => $filename, '%lable' => $attribute->label))); 
-        }
-      }
-    }
-  }
-  return TRUE;
-}
-
-/**
  * Submit handler for add to cart
 */
 function uc_attribute_files_cart_submit($form, &$form_state) {
@@ -349,88 +287,69 @@ function uc_attribute_files_cart_submit($form, &$form_state) {
     'file_validate_image_resolution' => array($limits['resolution']),
     'file_validate_size' => array($limits['file_size'], $limits['user_size']),
   );
+
   // Allow other modules to intervene.
-  drupal_alter('uc_attribute_files', $validators);
-  dsm($validators);
-  
+  drupal_alter('user_files_validators', $validators);
   // Save new file uploads.
-  foreach ($form_state['values']['attributes'] as $id => $value) {
+  foreach ($form_state['values']['node']->attributes as $attribute) {
     if (user_access('upload attribute files') &&
-        #@todo use actual filenames and field names
-        ($file = file_save_upload('file', $validators, file_create_path('user-files')))) {
-      $form_state['values']['attributes'][$id] = $file->fid;
+      user_access('own and manage a private file repository') &&
+      $attribute->display == UC_ATTRIBUTE_FILES_TYPE &&
+      isset($_FILES['files']['name']['attributes_'. $attribute->aid]) &&
+      ($full_validators = uc_attribute_files_fetch_extensions($attribute, $validators)) &&
+      ($file = file_save_upload('attributes_'. $attribute->aid, $full_validators, file_create_path('user-files')))) {
+      // Store our fid against the attribute for uc to find
+      $form_state['values']['attributes'][$attribute->aid] = $file->fid;
       if ($user->uid != 0) {
         file_set_status($file, FILE_STATUS_PERMANENT);
       }
-    }
-  }
-}
-
-/**
- * Render our links in the appropriate format
- * @todo make this nicer
-*/
-function uc_attribute_files_render_links($html) {
-  preg_match('!\orders?/(\d+)!', $_SERVER[request_uri()], $order);
-
-  if (count($order[1]) > 0) {
-    $order_user = db_fetch_object(db_query("SELECT uid FROM {uc_orders} WHERE order_id = %d", $order[1]));
-    $uri = 'uploads/order/' . $order_user->uid . '/' . $order[1] . '/';
-  }
-  else {
-    $uri = "uploads/cart/";
-  }
-
-  preg_match_all('!\[UC_ATTRIBUTE_FILES\](.*)\[/UC_ATTRIBUTE_FILES\]!U', $html, $links);
-  
-  for ($x =0; $x < count($links[1]); $x++) {
-    $find = $links[0][$x];
-    $replace = l($links[1][$x], $uri . $links[1][$x]);
-    $html = str_replace($find, $replace, $html ) ."\n";
-  }
-  return $html;
-}
-
-/**
- * Remove directory
- * @todo this should use the core file api
-*/
-function _uc_attribute_files_rrmdir($dir) {
-  if (is_dir($dir)) {
-    $objects = scandir($dir);
-    foreach ($objects as $object) {
-      if ($object != "." && $object != "..") {
-        if (filetype($dir . "/" . $object) == "dir") _uc_attribute_files_rrmdir($dir . "/" . $object); else unlink($dir . "/" . $object);
+      else {
+        $result = _user_files_assoc_anon($file->fid);
+        if ($result == FALSE) {
+          drupal_set_message(t('Could not associate anonymous user with file'));
+          watchdog('user_files', t('Could not associate anonymous user with file'));
+          form_set_error('', t('Session failure'));
+        }
       }
     }
-    reset($objects);
-    rmdir($dir);
+    else {
+      drupal_set_message(t('Could not upload your file.'), 'error');
+      // Redirect them back to the node (immediately, do not pass go and all that)
+      drupal_goto('node/'. $form_state['values']['node']->nid);
+    }
   }
 }
-
+/*********************************************
+ * Theme callbacks
+**********************************************/
 /**
- * Utility to move files
- * @todo this should use the core file api
+ * Theme override for the module so we can show our elements as links if needs be
 */
-function uc_attribute_files_move_files($old_dir, $new_dir) {
-  if (is_dir($old_dir)) {
-    if (!is_dir($new_dir) && !@mkdir($new_dir, 0755, TRUE)) {
-      return FALSE;
-    }
-    foreach (scandir($old_dir) as $file) {
-      if ($file == '.' || $file == '..') {
-        continue;
+function theme_uc_product_attributes_files($element) {
+  $option_rows = array();
+  foreach (element_children($element) as $key) {
+    $optionstr = '';
+
+    foreach ((array)$element[$key]['#options'] as $option) {
+      // We only need to allow translation from the second option onward
+      if (empty($optionstr)) {
+        $optionstr .= $option;
       }
-      @rename($old_dir . '/' . $file, $new_dir . '/' . $file);
+      else {
+        $optionstr .= t(', !option', array('!option' => $option));
+      }
     }
-    _uc_attribute_files_rrmdir($old_dir);
+    if (!empty($element[$key]['#html'])) {
+      $option_rows[$key] = t('@attribute: !option', array('@attribute' => $element[$key]['#attribute_name'], '!option' => $optionstr));
+    }
+    else {
+      $option_rows[$key] = t('@attribute: @option', array('@attribute' => $element[$key]['#attribute_name'], '@option' => $optionstr));
+    }
   }
-}
 
-/**
- * @wtf
-*/
-function uc_attribute_files_preprocess_table(&$variables) {
-  print_r("printed");
-}
+  if (!empty($option_rows)) {
+    return theme('item_list', array_values($option_rows), NULL, 'ul', array('class' => 'product-description'));
+  }
 
+  return '';
+}
