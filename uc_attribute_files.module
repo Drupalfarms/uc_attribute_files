@@ -34,6 +34,9 @@ function uc_attribute_files_menu_alter(&$items) {
   $items['admin/store/attributes']['page callback'] = 'uc_attribute_files_admin';
   $items['admin/store/attributes']['file'] = 'uc_attribute_files.inc';
   $items['admin/store/attributes']['module'] = 'uc_attribute_files';
+  $items['admin/store/attributes/overview']['page callback'] = 'uc_attribute_files_admin';
+  $items['admin/store/attributes/overview']['file'] = 'uc_attribute_files.inc';
+  $items['admin/store/attributes/overview']['module'] = 'uc_attribute_files';
 }
 
 /**
@@ -313,9 +316,16 @@ function uc_attribute_files_cart_submit($form, &$form_state) {
       }
     }
     else {
-      drupal_set_message(t('Could not upload your file.'), 'error');
-      // Redirect them back to the node (immediately, do not pass go and all that)
-      drupal_goto('node/'. $form_state['values']['node']->nid);
+      // Make sure they actually uploaded something here (could be optional)
+      if (!empty($_FILES['files']['name']['attributes_'. $attribute->aid])) {
+        drupal_set_message(t('Could not upload your file.'), 'error');
+        // Redirect them back to the node (immediately, do not pass go and all that)
+        drupal_goto('node/'. $form_state['values']['node']->nid);
+      }
+      if ($attribute->display == UC_ATTRIBUTE_FILES_TYPE) {
+        // Don't indicate we've got something here
+        unset($form_state['values']['attributes'][$attribute->aid]);
+      }
     }
   }
 }
