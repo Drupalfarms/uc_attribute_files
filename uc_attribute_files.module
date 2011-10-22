@@ -34,6 +34,9 @@ function uc_attribute_files_menu_alter(&$items) {
   $items['admin/store/attributes']['page callback'] = 'uc_attribute_files_admin';
   $items['admin/store/attributes']['file'] = 'uc_attribute_files.inc';
   $items['admin/store/attributes']['module'] = 'uc_attribute_files';
+  $items['admin/store/attributes/overview']['page callback'] = 'uc_attribute_files_admin';
+  $items['admin/store/attributes/overview']['file'] = 'uc_attribute_files.inc';
+  $items['admin/store/attributes/overview']['module'] = 'uc_attribute_files';
 }
 
 /**
@@ -205,29 +208,48 @@ function uc_attribute_files_user_view_upload_access() {
  *******************************************************/
 
 /**
+ * Implements hook_add_to_cart_data
+*/
+function uc_attribute_files_add_to_cart_data($form_values) {
+  return array('file_attributes' => $form_values['file_attributes']);
+}
+/**
  * Implements hook_product_description_alter
  * Allows us to render our links as desired
 */
 function uc_attribute_files_product_description_alter(&$item, $product) {
   if (isset($item['attributes'])) {
-    foreach (element_children($item['attributes']) as $key) {
-      $node = node_load($item['attributes']['#product']['#value']->nid);
-      $attribute = $node->attributes[$key];
-      if (empty($attribute)) {
-        // we've been passed the item with the attributes keyed by arbritrary aid
-        // and have to load the attribute based on name (yuck this is a bug with
-        // how uc sets the cart data for attributes)
-        $attribute = db_fetch_object(db_query("SELECT * FROM {uc_attributes}
-                                              WHERE label = '%s'", $item['attributes'][$key]['#attribute_name']));
+    foreach ($product->data['file_attributes'] as $aid => $fid) {
+      $form_key = $aid;
+      $attribute = db_fetch_object(db_query("SELECT * FROM {uc_attributes}
+                                              WHERE aid = %d", $aid));
+      if (empty($item['attributes'][$form_key])) {
+        // We're viewing an order here @see uc_attribute_product_description
+        // we've been passed attributes keyed arbitrarily instead of aid (fooey)
+        $ix = 0;
+        foreach ((array)$product->data['attributes'] as $attribute_name => $option) {
+          // Try and match our key
+          if ($attribute_name == $attribute->name ||
+              $attribute_name == $attribute->label) {
+            $form_key = $ix;
+            break;
+          }
+          $ix++;
+        }
+      }
+      if (empty($item['attributes'][$form_key])) {
+        // Still no match, make sure we use the attribute name for the $form_key
+        // otherwise the display is fooey
+        $form_key = $attribute->label;
       }
       if ($attribute->display == UC_ATTRIBUTE_FILES_TYPE) {
         // We've got a file here - load it
-        $file = db_fetch_object(db_query('SELECT f.* FROM {files} f WHERE f.fid = %d', $item['attributes'][$key]['#options'][0]));
+        $file = db_fetch_object(db_query('SELECT f.* FROM {files} f WHERE f.fid = %d', $fid));
         if ($file) {
           $url = _user_files_generate_url($file->filepath);
-          // 
-          $item['attributes'][$key]['#options'][0] = l($file->filename, $url);
-          $item['attributes'][$key]['#html'] = TRUE;
+          // Override the value 
+          $item['attributes'][$form_key]['#options'][0] = l($file->filename, $url);
+          $item['attributes'][$form_key]['#html'] = TRUE;
           // Override the theming so we can pass through the url without a check_plain
           $item['attributes']['#theme'] = 'uc_product_attributes_files';
         }
@@ -254,9 +276,8 @@ function uc_attribute_files_fetch_extensions($attribute, $validators) {
   while ($option = db_fetch_object($result)) {
     $file_types[] = strtolower($option->name);
   }
-  
   if (count($file_types)) {
-    $validators['file_validate_extensions'] .= ' '. implode(' ', $file_types);
+    $validators['file_validate_extensions'][0] .= ' '. implode(' ', $file_types);
   }
   return $validators;
 }
@@ -299,7 +320,10 @@ function uc_attribute_files_cart_submit($form, &$form_state) {
       ($full_validators = uc_attribute_files_fetch_extensions($attribute, $validators)) &&
       ($file = file_save_upload('attributes_'. $attribute->aid, $full_validators, file_create_path('user-files')))) {
       // Store our fid against the attribute for uc to find
-      $form_state['values']['attributes'][$attribute->aid] = $file->fid;
+      if (empty($form_state['values']['file_attributes'])) {
+        $form_state['values']['file_attributes'] = array();
+      }
+      $form_state['values']['file_attributes'][$attribute->aid] = $file->fid;
       if ($user->uid != 0) {
         file_set_status($file, FILE_STATUS_PERMANENT);
       }
@@ -313,9 +337,16 @@ function uc_attribute_files_cart_submit($form, &$form_state) {
       }
     }
     else {
-      drupal_set_message(t('Could not upload your file.'), 'error');
-      // Redirect them back to the node (immediately, do not pass go and all that)
-      drupal_goto('node/'. $form_state['values']['node']->nid);
+      // Make sure they actually uploaded something here (could be optional)
+      if (!empty($_FILES['files']['name']['attributes_'. $attribute->aid])) {
+        drupal_set_message(t('Could not upload your file.'), 'error');
+        // Redirect them back to the node (immediately, do not pass go and all that)
+        drupal_goto('node/'. $form_state['values']['node']->nid);
+      }
+      if ($attribute->display == UC_ATTRIBUTE_FILES_TYPE) {
+        // Don't indicate we've got something here
+        unset($form_state['values']['attributes'][$attribute->aid]);
+      }
     }
   }
 }
