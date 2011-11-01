@@ -67,6 +67,11 @@ function uc_attribute_files_form_alter(&$form, $form_state, $form_id) {
             }
           }
           else {
+            // To allow this to work with lazy sessions (pressflow)
+            if (count($_SESSION) == 0 || empty($_SESSION) && !$user->uid) {
+              // Inject something into session to ensure we have a persistent session id
+              $_SESSION['uc_attribute_files'] = 1;
+            }
             // Set the form encoding
             if (!empty($form['#attributes'])) {
               $form['#attributes']['enctype'] = "multipart/form-data";
@@ -328,6 +333,8 @@ function uc_attribute_files_cart_submit($form, &$form_state) {
         file_set_status($file, FILE_STATUS_PERMANENT);
       }
       else {
+        // Remove lazy session handler (pressflow), uc's cart_order_id takes over from here
+        unset($_SESSION['uc_attribute_files']);
         $result = _user_files_assoc_anon($file->fid);
         if ($result == FALSE) {
           drupal_set_message(t('Could not associate anonymous user with file'));
