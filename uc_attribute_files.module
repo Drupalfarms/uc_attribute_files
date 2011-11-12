@@ -94,6 +94,12 @@ function uc_attribute_files_form_alter(&$form, $form_state, $form_id) {
             $form['attributes'][$field_name]['#parents'] = array($field_name);
             // remove the old field - move it to a value
             $form['attributes'][$id]['#type'] = 'value';
+            if (empty($form['attributes'][$id]['#default_value']) &&
+                // No default is chosen - we need to select at least one - use the first
+                count($form['attributes'][$id]['#options']) > 0) {
+              $form['attributes'][$id]['#default_value'] = array_shift(array_keys($form['attributes'][$id]['#options']));
+            }
+            $form['attributes'][$id]['#value'] = $form['attributes'][$id]['#default_value'];
           }
         }
       }
