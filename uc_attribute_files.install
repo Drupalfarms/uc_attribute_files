@@ -1,20 +1,14 @@
 <?php
-// $Id$
 
 /**
- * @file
- * Install hooks for uc_test.module.
+ * @file uc_attribute_files.instal
+ * @author Doug Logan <my first name at dlogan dot com>
+ * Install hooks for uc_attribute_files.module.
+ * 
  */
 
 /**
- * Implemenation of hook_schema()
- *//*
-function uc_attribute_files_schema() {
-	return $schema;
-}
-
-/**
- * Implmentation of hook_install().
+ * Implments of hook_install().
  */
 function uc_attribute_files_install() {
   variable_set('uc_attribute_files_cart_filepath', file_directory_path() . '/cart');
@@ -22,10 +16,10 @@ function uc_attribute_files_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implements of hook_uninstall().
  */
 function uc_attribute_files_uninstall() {
   variable_del('uc_attribute_files_cart_filepath');
   variable_del('uc_attribute_files_order_filepath');
+	variable_del('uc_attribute_files_attribute_number');
 }
-//*/
